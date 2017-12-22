@@ -125,6 +125,19 @@
 		this._pipe = [];
 
 		/**
+		 * Validate if user intention is detected meaning knowing if user want to scroll up and down or drag the carousel.
+		 * @protected
+		 */
+		this._knowUserIntention = false;
+
+		/**
+		 * Check if users want to scroll up and down.
+		 * @protected
+		 */
+		this._isScrolling = false;
+
+
+		/**
 		 * Current state information for the drag operation.
 		 * @todo #261
 		 * @protected
@@ -684,11 +697,15 @@
 			this.$element.addClass(this.options.dragClass);
 			this.$stage.on('mousedown.owl.core', $.proxy(this.onDragStart, this));
 			this.$stage.on('dragstart.owl.core selectstart.owl.core', function() { return false });
+			this.$stage.on('mouseup.owl.core', $.proxy(this.onDragEnd, this));
+			this.$stage.on('mousemove.owl.core', $.proxy(this.onDragMove, this));
 		}
 
 		if (this.settings.touchDrag){
 			this.$stage.on('touchstart.owl.core', $.proxy(this.onDragStart, this));
 			this.$stage.on('touchcancel.owl.core', $.proxy(this.onDragEnd, this));
+			this.$stage.on('touchend.owl.core', $.proxy(this.onDragEnd, this));
+			this.$stage.on('touchmove.owl.core', $.proxy(this.onDragMove, this));
 		}
 	};
 
@@ -701,6 +718,10 @@
 	 */
 	Owl.prototype.onDragStart = function(event) {
 		var stage = null;
+
+		//Reset flags
+		this._knowUserIntention = false;
+		this._isScrolling = false;
 
 		if (event.which === 3) {
 			return;
@@ -736,23 +757,6 @@
 		this._drag.stage.start = stage;
 		this._drag.stage.current = stage;
 		this._drag.pointer = this.pointer(event);
-
-		$(document).on('mouseup.owl.core touchend.owl.core', $.proxy(this.onDragEnd, this));
-
-		$(document).one('mousemove.owl.core touchmove.owl.core', $.proxy(function(event) {
-			var delta = this.difference(this._drag.pointer, this.pointer(event));
-
-			$(document).on('mousemove.owl.core touchmove.owl.core', $.proxy(this.onDragMove, this));
-
-			if (Math.abs(delta.x) < Math.abs(delta.y) && this.is('valid')) {
-				return;
-			}
-
-			event.preventDefault();
-
-			this.enter('dragging');
-			this.trigger('drag');
-		}, this));
 	};
 
 	/**
@@ -768,11 +772,27 @@
 			delta = this.difference(this._drag.pointer, this.pointer(event)),
 			stage = this.difference(this._drag.stage.start, delta);
 
+		//If we don't know user intention yet, start detecting.
+		if(!this._knowUserIntention){
+			//If movement in x-axis less than y-axis, user want to scroll
+			if (Math.abs(delta.x) < Math.abs(delta.y)) {
+				this._isScrolling = true;
+			}else{
+				this.enter('dragging');
+			}
+			this._knowUserIntention = true;
+		}
+
+		if(this._isScrolling){
+			return;
+		}
+
 		if (!this.is('dragging')) {
 			return;
 		}
 
 		event.preventDefault();
+		this.trigger('drag');
 
 		if (this.settings.loop) {
 			minimum = this.coordinates(this.minimum());
@@ -805,6 +825,9 @@
 		$(document).off('.owl.core');
 
 		this.$element.removeClass(this.options.grabClass);
+		//reset flag
+		this._knowUserIntention = false;
+		this._isScrolling = false;
 
 		if (delta.x !== 0 && this.is('dragging') || !this.is('valid')) {
 			this.speed(this.settings.dragEndSpeed || this.settings.smartSpeed);
